@@ -20,12 +20,12 @@ const int servoPins[NUM_PULLEYS] = {
 // Default Travel Durations (in milliseconds)
 const unsigned long defaultDurationsUp[NUM_PULLEYS] = {
   8000, 3500, 6000, 2500, // Green Group (Q1-Q4)
-  18000, 4000, 1500, 2000, // Yellow Group (Q1-Q4)
+  18000, 3500, 1500, 2000, // Yellow Group (Q1-Q4)
   300, 300, 300, 300      // Red Group (Q1-Q4)
 };
 const unsigned long defaultDurationsDown[NUM_PULLEYS] = {
   8000, 3500, 6000, 2500, // Green Group (Q1-Q4)
-  3500, 4000, 1500, 2000, // Yellow Group (Q1-Q4)
+  3500, 3500, 1500, 2000, // Yellow Group (Q1-Q4)
   300, 300, 300, 300      // Red Group (Q1-Q4)
 };
 
@@ -142,9 +142,9 @@ void loadSettings() {
   
   // Reset memory once to apply new defaults
   int version = preferences.getInt("v", 0);
-  if (version < 20) {
+  if (version < 21) {
     preferences.clear();
-    preferences.putInt("v", 20);
+    preferences.putInt("v", 21);
   }
 
   for (int i = 0; i < NUM_PULLEYS; i++) {
