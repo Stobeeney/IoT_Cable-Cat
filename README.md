@@ -1,128 +1,110 @@
-# Mountain Cable Car Controller 🚡
+# 12-Pulley Network Controller 🚡
 
-An ESP32-C3 based 4-track Mountain Cable Car system with continuous rotation servos and an interactive, modern Web Control Portal. The controller hosts a local Wi-Fi Access Point and runs an HTTP server to provide asynchronous control, status monitoring, and live calibration capabilities.
+Isang advanced na ESP32-C3 based controller para sa **12 independent cable car pulleys** (na nahahati sa Green, Yellow, at Red groups para sa Q1, Q2, Q3, at Q4). Nagho-host ito ng local Wi-Fi Access Point at nagpapatakbo ng HTTP server na may interactive at premium na Web Dispatch Portal para sa manual UP/DOWN control at live persistent calibration.
 
 ---
 
-## 🏗️ System Architecture & Specifications
+## 🏗️ Hardware Architecture & Pin Assignments
 
-### Hardware Platform
-- **Microcontroller**: ESP32-C3 (configured for ESP32-C3 DevKitM-1)
-- **Actuators**: 4x Continuous Rotation Servos (referred to as **Q1**, **Q2**, **Q3**, and **Q4**)
-- **Driver Library**: `ESP32Servo` for PWM pulse-width modulation.
-- **Status LED**: Configured on GPIO 8 (flashes on bootup).
+Upang mapagana ang 12 independent pulleys gamit ang ESP32-C3, ang mga servos ay nakakonekta sa mga sumusunod na GPIO pins:
 
 ### Wiring Connection Table
 
-| Device / Module | ESP32-C3 GPIO | Function / Signal |
-| :--- | :---: | :--- |
-| **Servo Q1** | **GPIO 1** | PWM Signal Control |
-| **Servo Q2** | **GPIO 2** | PWM Signal Control |
-| **Servo Q3** | **GPIO 3** | PWM Signal Control |
-| **Servo Q4** | **GPIO 4** | PWM Signal Control |
-| **Built-in LED**| **GPIO 8** | Status Indication & Boot Flash |
+| Pulley Identifier | Group | ESP32-C3 GPIO Pin | Function / Signal |
+| :--- | :---: | :---: | :--- |
+| **Q1 Green** | Green | **GPIO 1** | Dynamic PWM Control |
+| **Q2 Green** | Green | **GPIO 2** | Dynamic PWM Control |
+| **Q3 Green** | Green | **GPIO 3** | Dynamic PWM Control |
+| **Q4 Green** | Green | **GPIO 4** | Dynamic PWM Control |
+| **Q1 Yellow**| Yellow| **GPIO 5** | Dynamic PWM Control |
+| **Q2 Yellow**| Yellow| **GPIO 6** | Dynamic PWM Control |
+| **Q3 Yellow**| Yellow| **GPIO 7** | Dynamic PWM Control |
+| **Q4 Yellow**| Yellow| **GPIO 8** | Dynamic PWM Control |
+| **Q1 Red**   | Red   | **GPIO 9** | Dynamic PWM Control |
+| **Q2 Red**   | Red   | **GPIO 10**| Dynamic PWM Control |
+| **Q3 Red**   | Red   | **GPIO 20**| Dynamic PWM Control |
+| **Q4 Red**   | Red   | **GPIO 21**| Dynamic PWM Control |
+| **Built-in LED**| Status| **GPIO 8** | Boot indicator flash |
 
 ---
 
-## 🚦 Station States & Timing Logic
+## ⚡ Dynamic Attach/Detach (LEDC Channel Optimization)
 
-Each cable car moves between three physical stations, controlled by continuous-rotation speed pulses and duration timers.
-
-### Station State Representation
-- **State 0: RED** (Bottom / Origin)
-- **State 1: YELLOW** (Middle / Midpoint)
-- **State 2: GREEN** (Top / Peak)
-
-### Default Timings & Speeds
-- **Red to Yellow**: `2500 ms` (2.5 seconds)
-- **Red to Green**: `5000 ms` (5 seconds)
-- **Yellow to Green**: `2500 ms` (Calculated dynamically as `durationGreen - durationYellow`)
-- **Servo PWM Speeds**:
-  - `FORWARD` (Upward): `1600 μs` (Microseconds)
-  - `REVERSE` (Downward): `1400 μs` (Microseconds)
-  - `STOP` (Calibrated): `1500 μs` default (Configurable per-servo to counter drift)
+Ang ESP32-C3 ay may hardware limit na **6 LEDC PWM channels** lamang. Upang patakbuhin ang 12 servo motors nang sabay-sabay at ligtas:
+1. **Dynamic Attach**: Kapag pinindot ang **UP** o **DOWN** button para sa isang pulley, doon pa lamang ito ia-attach sa software (`servos[p].attach()`) upang kumuha ng LEDC channel.
+2. **Signal Teardown & Detach**: Matapos ang travel duration (o kapag pinindot ang **STOP**), ang servo ay sumusulat ng stop pulse, tinatanggal sa GPIO (`servos[p].detach()`), at ang pin ay hinahila sa **LOW (0V)**.
+3. **Mga Benepisyo**:
+   * Walang limitasyon sa bilang ng servos na kayang kontrolin.
+   * Ganap na tinatanggal ang signal drift o motor creep (hindi gigising ang motor kapag stationary).
+   * Mas mababa ang konsumo sa kuryente.
 
 ---
 
-## 🔒 Anti-Creep & Jitter Protection
+## 🚦 Default Timing Configuration
 
-Continuous rotation servos are highly sensitive to PWM signal noise, which can cause slow drifting ("creep") or micro-jitter when they are supposed to be stationary. To resolve this, this project implements a **zero-creep signal teardown process**:
+Naka-embed sa controller ang mga sumusunod na default travel durations:
 
-1. **Active Driving**: When a movement is triggered, the microcontroller attaches the servo instance to the pin and writes the target microsecond speed pulse (`1600` for Forward, `1400` for Reverse).
-2. **Asynchronous Non-blocking Timer**: The main loop polls the elapsed time against target durations using a state machine (`millis()`), allowing other requests and web features to remain active.
-3. **Decoupled Termination**: Once the time expires:
-   - The target `stopMicroseconds` pulse is written.
-   - The servo is physically detached from the GPIO using `servos[s].detach()`.
-   - The GPIO pin is set to `OUTPUT` and pulled hard `LOW` (`0V`) using `digitalWrite(servoPins[s], LOW)`.
-   
-This completely cuts off the signal line, guaranteeing the servos remain locked in place and noise-free.
+| Pulley Index | Pulley Name | Default UP Duration | Default DOWN Duration | Custom Calibrations |
+| :---: | :--- | :---: | :---: | :--- |
+| **0** | Q1 Green | 7.0s (`7000` ms) | 7.0s (`7000` ms) | Standard |
+| **1** | Q2 Green | 3.0s (`3000` ms) | 3.0s (`3000` ms) | Standard |
+| **2** | Q3 Green | 7.0s (`7000` ms) | 7.0s (`7000` ms) | Standard |
+| **3** | Q4 Green | 3.0s (`3000` ms) | 3.0s (`3000` ms) | Standard |
+| **4** | Q1 Yellow | 16.0s (`16000` ms)| 1.5s (`1500` ms) | Reverse Speed = `400` us |
+| **5** | Q2 Yellow | 4.0s (`4000` ms) | 4.0s (`4000` ms) | Standard |
+| **6** | Q3 Yellow | 1.5s (`1500` ms) | 1.5s (`1500` ms) | Standard |
+| **7** | Q4 Yellow | 2.0s (`2000` ms) | 2.0s (`2000` ms) | Standard |
+| **8..11**| Q1-Q4 Red | 0.3s (`300` ms) | 0.3s (`300` ms) | Standard |
 
 ---
 
-## 🌐 Web API Documentation
+## 🌐 Web API Endpoints
 
-The ESP32-C3 acts as a Wi-Fi Access Point:
-- **SSID**: `CableCar_Controller`
-- **Password**: `12345678`
-- **Port**: `80` (HTTP)
+Kumonekta sa Wi-Fi AP ng board:
+* **SSID**: `CableCar_12_Pulleys`
+* **Password**: `12345678`
+* **Access Portal**: `http://192.168.4.1`
 
-All interactions are handled via RESTful API endpoints:
+### 1. Serves Controller Interface
+* **Endpoint**: `GET /`
+* **Response**: Responsive Glassmorphism dashboard na may control panels at calibration system.
 
-### 1. Serves Web Portal
-- **Endpoint**: `GET /`
-- **Response**: The responsive, dark-glassmorphism HTML panel.
-
-### 2. Retrieve Status
-- **Endpoint**: `GET /api/status`
-- **Response**: `application/json`
+### 2. Live Status
+* **Endpoint**: `GET /api/status`
+* **Response**: `application/json`
 ```json
 {
-  "s": [0, 0, 0, 0],
-  "g": 5000,
-  "y": 2500,
-  "stops": [1500, 1500, 1500, 1500]
+  "s": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  "durUp": [7000, 3000, 7000, 3000, 16000, 4000, 1500, 2000, 300, 300, 300, 300],
+  "durDown": [7000, 3000, 7000, 3000, 1500, 4000, 1500, 2000, 300, 300, 300, 300],
+  "fwd": [1200, 1000, 2000, 3000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000],
+  "rev": [1800, 3000, 1000, 400, 400, 2000, 2000, 2000, 2000, 2000, 2000, 2000],
+  "stop": [1500, 1500, 1500, 800, 1500, 1500, 1500, 1500, 1500, 1500, 1500, 1500]
 }
 ```
-*(`s` represents station positions for Q1–Q4, `g`/`y` are Green/Yellow timings, `stops` are current zero-drift calibrations).*
+*(`s` represents state: 0=BOTTOM, 1=TOP, 2=MOVING_UP, 3=MOVING_DOWN).*
 
-### 3. Asynchronous Dispatch Car
-- **Endpoint**: `GET /api/move?s=<0..3>&t=<0..2>`
-  - `s`: Servo Index (0 for Q1, 1 for Q2, etc.)
-  - `t`: Target Station (0 = RED, 1 = YELLOW, 2 = GREEN)
-- **Response**: Updated JSON status object.
+### 3. Move Pulley
+* **Endpoint**: `GET /api/move?p=<0..11>&dir=<up|down>`
+* **Behavior**: Pinapatakbo ang pulley `p` sa tinukoy na direksyon batay sa naka-save na duration at speed.
 
-### 4. Calibration Config
-- **Endpoint**: `GET /api/cal?g=<ms>&y=<ms>&s0=<us>&s1=<us>&s2=<us>&s3=<us>`
-  - `g`: Green duration in ms
-  - `y`: Yellow duration in ms
-  - `s0` to `s3`: Calibration stop pulse-width (μs) for Q1 through Q4
-- **Response**: `{"ok":1, "g":..., "y":...}`
+### 4. Stop Pulley / Emergency Stop
+* **Endpoint**: `GET /api/stop?p=<index | -1>`
+* **Behavior**: Patigilin ang isang pulley. Kapag `p=-1`, ito ay mag-ti-trigger ng **Emergency Stop All** (sabay na hihinto ang lahat ng 12 motors).
 
-### 5. Return All to Base
-- **Endpoint**: `GET /api/resetall`
-- **Behavior**: Moves all cable cars currently at Yellow or Green back to Red sequentially (blocking reset safety sequence) and performs a hard stop.
+### 5. Persistent Calibration Config
+* **Endpoint**: `GET /api/cal?p=<0..11>&durUp=<ms>&durDown=<ms>&fwd=<us>&rev=<us>&stop=<us>`
+* **Behavior**: Sinesave ang bagong configurations ng pulley `p` sa Preferences (Flash). Mananatili itong naka-save kahit patayin o i-reboot ang ESP32.
 
----
-
-## 🎨 Interactive Control Portal
-
-The Web interface is fully responsive, designed with **modern glassmorphism UI aesthetics**, featuring:
-- **Visual Tracks**: Real-time position tracking animations for all 4 cable cars.
-- **Pulley Selectors**: Interactive tabs to switch focus between Q1, Q2, Q3, and Q4.
-- **Action Dashboard**: Color-coded buttons matching the target stations (Green, Yellow, Red) to trigger movement.
-- **Diagnostics & Calibration Drawer**: Allows operators to calibrate travel durations and adjust servo zero-points on the fly without re-flashing the firmware.
+### 6. Reset All Pulleys
+* **Endpoint**: `GET /api/resetall`
+* **Behavior**: Ibababa ang lahat ng pulleys patungong BOTTOM state sequentially para sa kaligtasan ng mechanical assembly.
 
 ---
 
-## 🚀 Setup & Build Instructions
+## 🚀 Setup & Upload Instructions
 
-### Prerequisites
-- [VS Code](https://code.visualstudio.com/) with the [PlatformIO IDE Extension](https://platformio.org/).
-
-### Compiling and Uploading
-1. Clone or open the project folder in VS Code.
-2. PlatformIO will automatically read `platformio.ini` and download the necessary ESP32 toolchains and libraries (e.g., `ESP32Servo`).
-3. Connect the ESP32-C3 to your computer via USB (Default configuration points to `COM12`).
-4. Click **PlatformIO: Build** or use the shortcut `Ctrl+Alt+B`.
-5. Click **PlatformIO: Upload** or use the shortcut `Ctrl+Alt+U`.
-6. Open your serial monitor at `115200` baud to see the system boot diagnostics.
+1. Buksan ang folder na ito sa **VS Code** na may **PlatformIO extension**.
+2. Ikonekta ang ESP32-C3 sa inyong computer gamit ang USB.
+3. I-click ang **Upload** (o `Ctrl+Alt+U`) para i-flash ang firmware.
+4. I-reboot ang device at kumonekta sa SSID ng portal.
