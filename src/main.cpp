@@ -12,38 +12,38 @@ const int NUM_PULLEYS = 12;
 // GPIO assignments for 12 Pulleys (ESP32-C3)
 // 0-3: Green (Q1-Q4), 4-7: Yellow (Q1-Q4), 8-11: Red (Q1-Q4)
 const int servoPins[NUM_PULLEYS] = {
-  1, 2, 3, 4,       // Green Group (Q1, Q2, Q3, Q4)
-  5, 6, 7, 8,       // Yellow Group (Q1, Q2, Q3, Q4)
-  9, 10, 20, 21     // Red Group (Q1, Q2, Q3, Q4)
+    1, 2, 3, 4,   // Green Group (Q1, Q2, Q3, Q4)
+    5, 6, 7, 8,   // Yellow Group (Q1, Q2, Q3, Q4)
+    9, 10, 20, 21 // Red Group (Q1, Q2, Q3, Q4)
 };
 
 // Default Travel Durations (in milliseconds)
 const unsigned long defaultDurationsUp[NUM_PULLEYS] = {
-  7500, 3500, 6000, 3500, // Green Group (Q1-Q4) (Q1 Green UP is 7500, Q4 Green UP is 3500)
+  7500, 3500, 6000, 3000, // Green Group (Q1-Q4) (Q1 Green UP is 7500, Q4 Green UP is 3000)
   18000, 3500, 1000, 2000, // Yellow Group (Q1-Q4) (Q3 Yellow UP is 1000)
-  300, 300, 300, 500      // Red Group (Q1-Q4) (Q4 Red UP is 500)
+  125, 125, 125, 125      // Red Group (Q1-Q4) (Pulse Step mode - 125ms)
 };
 const unsigned long defaultDurationsDown[NUM_PULLEYS] = {
-  7500, 4000, 6000, 3500, // Green Group (Q1-Q4) (Q1 Green DOWN is 7500, Q2 Green DOWN is 4000, Q4 Green DOWN is 3500)
+  7500, 4000, 6000, 3000, // Green Group (Q1-Q4) (Q1 Green DOWN is 7500, Q2 Green DOWN is 4000, Q4 Green DOWN is 3000)
   2000, 3500, 1500, 2000, // Yellow Group (Q1-Q4) (Q1 Yellow DOWN is 2000)
-  300, 300, 300, 500      // Red Group (Q1-Q4) (Q4 Red DOWN is 500)
+  125, 125, 125, 125      // Red Group (Q1-Q4) (Pulse Step mode - 125ms)
 };
 
 // Default Speeds (microseconds)
 const int defaultFwd[NUM_PULLEYS] = {
-  1200, 1000, 2000, 3000, // Green Group
-  1000, 1000, 1000, 1000, // Yellow Group
-  1000, 1000, 1000, 1000  // Red Group
+    1200, 1000, 2000, 3000, // Green Group
+    1000, 1000, 1000, 1000, // Yellow Group
+    2000, 2000, 2000, 2000  // Red Group (Inverted: Fwd UP is 2000)
 };
 const int defaultRev[NUM_PULLEYS] = {
-  1800, 3000, 1000, 400,  // Green Group
-  400, 2000, 2000, 2000,  // Yellow Group (Q1 Yellow reverse is 400)
-  2000, 2000, 2000, 2000  // Red Group
+    1800, 3000, 1000, 400, // Green Group
+    400, 2000, 2000, 2000, // Yellow Group (Q1 Yellow reverse is 400)
+    1000, 1000, 1000, 1000 // Red Group (Inverted: Rev DOWN is 1000)
 };
 const int defaultStop[NUM_PULLEYS] = {
-  1500, 1500, 1500, 800,  // Green Group
-  1500, 1500, 1500, 1500, // Yellow Group
-  1500, 1500, 1500, 1500  // Red Group
+    1500, 1500, 1500, 800,  // Green Group
+    1500, 1500, 1500, 1500, // Yellow Group
+    1515, 1500, 1515, 1500  // Red Group (Q1 Red stop is 1515, Q3 Red stop is 1515)
 };
 
 // Active settings loaded from Flash (Preferences)
@@ -79,101 +79,116 @@ void handleResetAll();
 void stopServo(int s);
 void startServo(int s, bool forward);
 
-void setup() {
-  Serial.begin(115200);
-  delay(500);
-  Serial.println("\n--- ESP32-C3 12-Pulley System Booting ---");
-  
-  pinMode(LED_PIN, OUTPUT);
-  
-  // Quick LED blink to show boot activity
-  for (int i = 0; i < 3; i++) {
-    digitalWrite(LED_PIN, LOW); delay(100);
-    digitalWrite(LED_PIN, HIGH); delay(100);
-  }
+void setup()
+{
+    Serial.begin(115200);
+    delay(500);
+    Serial.println("\n--- ESP32-C3 12-Pulley System Booting ---");
 
-  // Load calibrated settings from flash
-  loadSettings();
+    pinMode(LED_PIN, OUTPUT);
 
-  // Let power stabilize before WiFi
-  delay(1000);
+    // Quick LED blink to show boot activity
+    for (int i = 0; i < 3; i++)
+    {
+        digitalWrite(LED_PIN, LOW);
+        delay(100);
+        digitalWrite(LED_PIN, HIGH);
+        delay(100);
+    }
 
-  // Start WiFi AP
-  WiFi.mode(WIFI_AP);
-  WiFi.setTxPower(WIFI_POWER_8_5dBm);
-  WiFi.softAP("CableCar_12_Pulleys", "12345678");
+    // Load calibrated settings from flash
+    loadSettings();
 
-  // Setup WebServer
-  server.on("/", HTTP_GET, handleRoot);
-  server.on("/api/status", HTTP_GET, handleStatus);
-  server.on("/api/move", HTTP_GET, handleMove);
-  server.on("/api/stop", HTTP_GET, handleStop);
-  server.on("/api/cal", HTTP_GET, handleCal);
-  server.on("/api/resetall", HTTP_GET, handleResetAll);
-  server.begin();
-  Serial.println("Web server started successfully!");
+    // Let power stabilize before WiFi
+    delay(1000);
 
-  // Ensure all 12 servo pins are initialized to STOP (LOW) state immediately
-  for (int i = 0; i < NUM_PULLEYS; i++) {
-    stopServo(i);
-  }
-  Serial.println("All 12 pulleys initialized to STOP state.");
+    // Start WiFi AP
+    WiFi.mode(WIFI_AP);
+    WiFi.setTxPower(WIFI_POWER_8_5dBm);
+    WiFi.softAP("CableCar_12_Pulleys", "12345678");
+
+    // Setup WebServer
+    server.on("/", HTTP_GET, handleRoot);
+    server.on("/api/status", HTTP_GET, handleStatus);
+    server.on("/api/move", HTTP_GET, handleMove);
+    server.on("/api/stop", HTTP_GET, handleStop);
+    server.on("/api/cal", HTTP_GET, handleCal);
+    server.on("/api/resetall", HTTP_GET, handleResetAll);
+    server.begin();
+    Serial.println("Web server started successfully!");
+
+    // Ensure all 12 servo pins are initialized to STOP (LOW) state immediately
+    for (int i = 0; i < NUM_PULLEYS; i++)
+    {
+        stopServo(i);
+    }
+    Serial.println("All 12 pulleys initialized to STOP state.");
 }
 
-void loop() {
-  server.handleClient();
+void loop()
+{
+    server.handleClient();
 
-  // Asynchronous timer state machine checks for all 12 pulleys
-  for (int i = 0; i < NUM_PULLEYS; i++) {
-    if (isMoving[i]) {
-      if (millis() - moveStartTime[i] >= moveDuration[i]) {
-        stopServo(i);
-        currentStates[i] = (currentStates[i] == 2) ? 1 : 0; // 2 (MOVING_UP) -> 1 (UP), 3 (MOVING_DOWN) -> 0 (DOWN)
-        isMoving[i] = false;
-        Serial.printf("Pulley %d async movement completed.\n", i);
-      }
+    // Asynchronous timer state machine checks for all 12 pulleys
+    for (int i = 0; i < NUM_PULLEYS; i++)
+    {
+        if (isMoving[i])
+        {
+            // Only stop automatically if duration is greater than 0. 
+            // If duration is 0, it runs manually until the STOP button is pressed.
+            if (moveDuration[i] > 0 && (millis() - moveStartTime[i] >= moveDuration[i]))
+            {
+                stopServo(i);
+                currentStates[i] = (currentStates[i] == 2) ? 1 : 0; // 2 (MOVING_UP) -> 1 (UP), 3 (MOVING_DOWN) -> 0 (DOWN)
+                isMoving[i] = false;
+                Serial.printf("Pulley %d async movement completed.\n", i);
+            }
+        }
     }
-  }
 }
 
 // Load configurations from non-volatile flash storage
-void loadSettings() {
-  preferences.begin("pulleys", false);
-  
-  // Reset memory once to apply new defaults
-  int version = preferences.getInt("v", 0);
-  if (version < 27) {
-    preferences.clear();
-    preferences.putInt("v", 27);
-  }
+void loadSettings()
+{
+    preferences.begin("pulleys", false);
 
-  for (int i = 0; i < NUM_PULLEYS; i++) {
-    String kDurUp = "uDur" + String(i);
-    String kDurDn = "dDur" + String(i);
-    String kFwd = "fwd" + String(i);
-    String kRev = "rev" + String(i);
-    String kStop = "stp" + String(i);
-    
-    durationUp[i] = preferences.getULong(kDurUp.c_str(), defaultDurationsUp[i]);
-    durationDown[i] = preferences.getULong(kDurDn.c_str(), defaultDurationsDown[i]);
-    speedFwd[i] = preferences.getInt(kFwd.c_str(), defaultFwd[i]);
-    speedRev[i] = preferences.getInt(kRev.c_str(), defaultRev[i]);
-    speedStop[i] = preferences.getInt(kStop.c_str(), defaultStop[i]);
-  }
-  preferences.end();
-  Serial.println("Settings successfully loaded from Preferences flash.");
+    // Reset memory once to apply new defaults
+    int version = preferences.getInt("v", 0);
+    if (version < 36)
+    {
+        preferences.clear();
+        preferences.putInt("v", 36);
+    }
+
+    for (int i = 0; i < NUM_PULLEYS; i++)
+    {
+        String kDurUp = "uDur" + String(i);
+        String kDurDn = "dDur" + String(i);
+        String kFwd = "fwd" + String(i);
+        String kRev = "rev" + String(i);
+        String kStop = "stp" + String(i);
+
+        durationUp[i] = preferences.getULong(kDurUp.c_str(), defaultDurationsUp[i]);
+        durationDown[i] = preferences.getULong(kDurDn.c_str(), defaultDurationsDown[i]);
+        speedFwd[i] = preferences.getInt(kFwd.c_str(), defaultFwd[i]);
+        speedRev[i] = preferences.getInt(kRev.c_str(), defaultRev[i]);
+        speedStop[i] = preferences.getInt(kStop.c_str(), defaultStop[i]);
+    }
+    preferences.end();
+    Serial.println("Settings successfully loaded from Preferences flash.");
 }
 
 // Save specific pulley configurations to flash
-void saveSettings(int p) {
-  preferences.begin("pulleys", false);
-  preferences.putULong(("uDur" + String(p)).c_str(), durationUp[p]);
-  preferences.putULong(("dDur" + String(p)).c_str(), durationDown[p]);
-  preferences.putInt(("fwd" + String(p)).c_str(), speedFwd[p]);
-  preferences.putInt(("rev" + String(p)).c_str(), speedRev[p]);
-  preferences.putInt(("stp" + String(p)).c_str(), speedStop[p]);
-  preferences.end();
-  Serial.printf("Settings for Pulley %d saved to flash.\n", p);
+void saveSettings(int p)
+{
+    preferences.begin("pulleys", false);
+    preferences.putULong(("uDur" + String(p)).c_str(), durationUp[p]);
+    preferences.putULong(("dDur" + String(p)).c_str(), durationDown[p]);
+    preferences.putInt(("fwd" + String(p)).c_str(), speedFwd[p]);
+    preferences.putInt(("rev" + String(p)).c_str(), speedRev[p]);
+    preferences.putInt(("stp" + String(p)).c_str(), speedStop[p]);
+    preferences.end();
+    Serial.printf("Settings for Pulley %d saved to flash.\n", p);
 }
 
 // HTML, CSS, JS Portal content
@@ -451,6 +466,7 @@ const char HTML_CONTENT[] PROGMEM = R"rawhtml(
             for (let i = 0; i < NUM_PULLEYS; i++) {
                 // Populate grid
                 const card = document.createElement('div');
+                const isRed = (i >= 8);
                 card.className = `pulley-card ${groupClasses[i]}`;
                 card.id = `card-${i}`;
                 card.innerHTML = `
@@ -460,10 +476,10 @@ const char HTML_CONTENT[] PROGMEM = R"rawhtml(
                     </div>
                     <div class="status-indicator down" id="status-${i}">BOTTOM</div>
                     <div class="btn-group">
-                        <button class="btn-control" id="btn-up-${i}" onclick="move(${i}, 'up')">UP</button>
-                        <button class="btn-control" id="btn-down-${i}" onclick="move(${i}, 'down')">DOWN</button>
+                        <button class="btn-control" id="btn-up-${i}" onclick="move(${i}, 'up')">${isRed ? '▲' : 'UP'}</button>
+                        ${isRed ? '' : `<button class="btn-control" id="btn-down-${i}" onclick="move(${i}, 'down')">DOWN</button>`}
                     </div>
-                    <button class="btn-stop" id="btn-stop-${i}" onclick="stop(${i})">STOP</button>
+                    ${isRed ? '' : `<button class="btn-stop" id="btn-stop-${i}" onclick="stop(${i})">STOP</button>`}
                 `;
                 grid.appendChild(card);
 
@@ -487,32 +503,33 @@ const char HTML_CONTENT[] PROGMEM = R"rawhtml(
                         const btnStop = document.getElementById(`btn-stop-${i}`);
                         
                         const state = d.s[i];
+                        const isRed = (i >= 8);
                         
                         // State handling: 0=DOWN, 1=UP, 2=MOVING_UP, 3=MOVING_DOWN
                         if (state === 0) {
-                            statusIndicator.innerText = "BOTTOM";
+                            statusIndicator.innerText = isRed ? "READY" : "BOTTOM";
                             statusIndicator.className = "status-indicator down";
-                            btnUp.disabled = false;
-                            btnDown.disabled = true;
-                            btnStop.disabled = true;
+                            if (btnUp) btnUp.disabled = false;
+                            if (btnDown) btnDown.disabled = isRed ? false : true;
+                            if (btnStop) btnStop.disabled = true;
                         } else if (state === 1) {
-                            statusIndicator.innerText = "TOP";
+                            statusIndicator.innerText = isRed ? "READY" : "TOP";
                             statusIndicator.className = "status-indicator up";
-                            btnUp.disabled = true;
-                            btnDown.disabled = false;
-                            btnStop.disabled = true;
+                            if (btnUp) btnUp.disabled = isRed ? false : true;
+                            if (btnDown) btnDown.disabled = false;
+                            if (btnStop) btnStop.disabled = true;
                         } else if (state === 2) {
-                            statusIndicator.innerText = "MOVING UP...";
+                            statusIndicator.innerText = isRed ? "TAPPING UP..." : "MOVING UP...";
                             statusIndicator.className = "status-indicator moving-up";
-                            btnUp.disabled = true;
-                            btnDown.disabled = true;
-                            btnStop.disabled = false;
+                            if (btnUp) btnUp.disabled = true;
+                            if (btnDown) btnDown.disabled = true;
+                            if (btnStop) btnStop.disabled = false;
                         } else if (state === 3) {
-                            statusIndicator.innerText = "MOVING DOWN...";
+                            statusIndicator.innerText = isRed ? "TAPPING DN..." : "MOVING DOWN...";
                             statusIndicator.className = "status-indicator moving-down";
-                            btnUp.disabled = true;
-                            btnDown.disabled = true;
-                            btnStop.disabled = false;
+                            if (btnUp) btnUp.disabled = true;
+                            if (btnDown) btnDown.disabled = true;
+                            if (btnStop) btnStop.disabled = false;
                         }
                     }
                     if (document.getElementById('calib-panel').style.display === 'block') {
@@ -528,16 +545,17 @@ const char HTML_CONTENT[] PROGMEM = R"rawhtml(
             const btnUp = document.getElementById(`btn-up-${p}`);
             const btnDown = document.getElementById(`btn-down-${p}`);
             const btnStop = document.getElementById(`btn-stop-${p}`);
+            const isRed = (p >= 8);
 
-            btnUp.disabled = true;
-            btnDown.disabled = true;
-            btnStop.disabled = false;
+            if (btnUp) btnUp.disabled = true;
+            if (btnDown) btnDown.disabled = true;
+            if (btnStop) btnStop.disabled = false;
 
             if (dir === 'up') {
-                statusIndicator.innerText = "MOVING UP...";
+                statusIndicator.innerText = isRed ? "TAPPING UP..." : "MOVING UP...";
                 statusIndicator.className = "status-indicator moving-up";
             } else {
-                statusIndicator.innerText = "MOVING DOWN...";
+                statusIndicator.innerText = isRed ? "TAPPING DN..." : "MOVING DOWN...";
                 statusIndicator.className = "status-indicator moving-down";
             }
 
@@ -549,20 +567,20 @@ const char HTML_CONTENT[] PROGMEM = R"rawhtml(
                 .catch(e => {
                     console.error(e);
                     updateStatus();
-                });
-        }
+                    });
+            }
 
-        function stop(p) {
-            fetch(`/api/stop?p=${p}`)
-                .then(r => r.json())
-                .then(d => {
-                    updateStatus();
-                })
-                .catch(e => {
-                    console.error(e);
-                    updateStatus();
-                });
-        }
+            function stop(p) {
+                fetch(`/api/stop?p=${p}`)
+                    .then(r => r.json())
+                    .then(d => {
+                        updateStatus();
+                    })
+                    .catch(e => {
+                        console.error(e);
+                        updateStatus();
+                    });
+            }
 
         function stopAll() {
             fetch('/api/stop?p=-1')
@@ -631,183 +649,251 @@ const char HTML_CONTENT[] PROGMEM = R"rawhtml(
 </html>
 )rawhtml";
 
-void handleRoot() {
-  server.send(200, "text/html", HTML_CONTENT);
+void handleRoot()
+{
+    server.send(200, "text/html", HTML_CONTENT);
 }
 
-void handleStatus() {
-  String j = "{\"s\":[";
-  for (int i=0; i<NUM_PULLEYS; i++) { if(i) j+=","; j+=String(currentStates[i]); }
-  j += "],\"durUp\":[";
-  for (int i=0; i<NUM_PULLEYS; i++) { if(i) j+=","; j+=String(durationUp[i]); }
-  j += "],\"durDown\":[";
-  for (int i=0; i<NUM_PULLEYS; i++) { if(i) j+=","; j+=String(durationDown[i]); }
-  j += "],\"fwd\":[";
-  for (int i=0; i<NUM_PULLEYS; i++) { if(i) j+=","; j+=String(speedFwd[i]); }
-  j += "],\"rev\":[";
-  for (int i=0; i<NUM_PULLEYS; i++) { if(i) j+=","; j+=String(speedRev[i]); }
-  j += "],\"stop\":[";
-  for (int i=0; i<NUM_PULLEYS; i++) { if(i) j+=","; j+=String(speedStop[i]); }
-  j += "]}";
-  server.send(200, "application/json", j);
+void handleStatus()
+{
+    String j = "{\"s\":[";
+    for (int i = 0; i < NUM_PULLEYS; i++)
+    {
+        if (i)
+            j += ",";
+        j += String(currentStates[i]);
+    }
+    j += "],\"durUp\":[";
+    for (int i = 0; i < NUM_PULLEYS; i++)
+    {
+        if (i)
+            j += ",";
+        j += String(durationUp[i]);
+    }
+    j += "],\"durDown\":[";
+    for (int i = 0; i < NUM_PULLEYS; i++)
+    {
+        if (i)
+            j += ",";
+        j += String(durationDown[i]);
+    }
+    j += "],\"fwd\":[";
+    for (int i = 0; i < NUM_PULLEYS; i++)
+    {
+        if (i)
+            j += ",";
+        j += String(speedFwd[i]);
+    }
+    j += "],\"rev\":[";
+    for (int i = 0; i < NUM_PULLEYS; i++)
+    {
+        if (i)
+            j += ",";
+        j += String(speedRev[i]);
+    }
+    j += "],\"stop\":[";
+    for (int i = 0; i < NUM_PULLEYS; i++)
+    {
+        if (i)
+            j += ",";
+        j += String(speedStop[i]);
+    }
+    j += "]}";
+    server.send(200, "application/json", j);
 }
 
-void handleMove() {
-  if (!server.hasArg("p") || !server.hasArg("dir")) {
-    server.send(400, "application/json", "{\"err\":1}"); return;
-  }
-  int p = server.arg("p").toInt();
-  String dir = server.arg("dir");
-  if (p < 0 || p >= NUM_PULLEYS || (dir != "up" && dir != "down")) {
-    server.send(400, "application/json", "{\"err\":2}"); return;
-  }
-  
-  // Re-entry / Busy check: if currently moving, reject new moves for THIS pulley
-  if (isMoving[p]) {
-    server.send(409, "application/json", "{\"err\":\"busy\"}"); return;
-  }
+void handleMove()
+{
+    if (!server.hasArg("p") || !server.hasArg("dir"))
+    {
+        server.send(400, "application/json", "{\"err\":1}");
+        return;
+    }
+    int p = server.arg("p").toInt();
+    String dir = server.arg("dir");
+    if (p < 0 || p >= NUM_PULLEYS || (dir != "up" && dir != "down"))
+    {
+        server.send(400, "application/json", "{\"err\":2}");
+        return;
+    }
 
-  bool fwd = (dir == "up");
-  int targetState = fwd ? 2 : 3; // 2 = MOVING_UP, 3 = MOVING_DOWN
-  unsigned long dur = fwd ? durationUp[p] : durationDown[p];
+    // Re-entry / Busy check: if currently moving, reject new moves for THIS pulley
+    if (isMoving[p])
+    {
+        server.send(409, "application/json", "{\"err\":\"busy\"}");
+        return;
+    }
 
-  if (dur > 0) {
+    bool fwd = (dir == "up");
+    int targetState = fwd ? 2 : 3; // 2 = MOVING_UP, 3 = MOVING_DOWN
+    unsigned long dur = fwd ? durationUp[p] : durationDown[p];
+
     isMoving[p] = true;
     moveStartTime[p] = millis();
     moveDuration[p] = dur;
     currentStates[p] = targetState;
 
-    Serial.printf("Pulley %d starting movement: dir=%s, pin=%d, duration=%lu ms\n", 
-                  p, dir.c_str(), servoPins[p], dur);
+    if (dur > 0)
+    {
+        Serial.printf("Pulley %d starting movement: dir=%s, pin=%d, duration=%lu ms\n",
+                      p, dir.c_str(), servoPins[p], dur);
+    }
+    else
+    {
+        Serial.printf("Pulley %d starting manual movement: dir=%s, pin=%d\n",
+                      p, dir.c_str(), servoPins[p]);
+    }
     startServo(p, fwd);
-  }
 
-  handleStatus();
-}
-
-void handleStop() {
-  if (!server.hasArg("p")) {
-    server.send(400, "application/json", "{\"err\":1}"); return;
-  }
-  int p = server.arg("p").toInt();
-
-  // If p is -1, trigger EMERGENCY STOP ALL
-  if (p == -1) {
-    Serial.println("EMERGENCY STOP: Stopping all 12 pulleys immediately!");
-    for (int i = 0; i < NUM_PULLEYS; i++) {
-      if (isMoving[i]) {
-        stopServo(i);
-        isMoving[i] = false;
-        // Keep current state as is (it remains whatever it was: moving states resolved to last state or stopped)
-        currentStates[i] = (currentStates[i] == 2) ? 1 : 0;
-      }
-    }
     handleStatus();
-    return;
-  }
-
-  if (p < 0 || p >= NUM_PULLEYS) {
-    server.send(400, "application/json", "{\"err\":2}"); return;
-  }
-
-  if (isMoving[p]) {
-    stopServo(p);
-    isMoving[p] = false;
-    currentStates[p] = (currentStates[p] == 2) ? 1 : 0;
-    Serial.printf("Pulley %d manually stopped.\n", p);
-  }
-
-  handleStatus();
 }
 
-void handleCal() {
-  if (!server.hasArg("p") || !server.hasArg("durUp") || !server.hasArg("durDown") || 
-      !server.hasArg("fwd") || !server.hasArg("rev") || !server.hasArg("stop")) {
-    server.send(400, "application/json", "{\"err\":1}"); return;
-  }
-
-  int p = server.arg("p").toInt();
-  unsigned long durUpVal = server.arg("durUp").toInt();
-  unsigned long durDnVal = server.arg("durDown").toInt();
-  int fwdVal = server.arg("fwd").toInt();
-  int revVal = server.arg("rev").toInt();
-  int stopVal = server.arg("stop").toInt();
-
-  if (p < 0 || p >= NUM_PULLEYS) {
-    server.send(400, "application/json", "{\"err\":2}"); return;
-  }
-
-  // Update RAM values
-  durationUp[p] = durUpVal;
-  durationDown[p] = durDnVal;
-  speedFwd[p] = fwdVal;
-  speedRev[p] = revVal;
-  speedStop[p] = stopVal;
-
-  // Save to Preferences (Flash)
-  saveSettings(p);
-
-  // Instantly apply stop pulse calibration to physical servo if not moving
-  if (!isMoving[p]) {
-    stopServo(p);
-  }
-
-  server.send(200, "application/json", "{\"ok\":1}");
-}
-
-void handleResetAll() {
-  Serial.println("Resetting all 12 pulleys to BOTTOM (DOWN) state...");
-  
-  for (int i = 0; i < NUM_PULLEYS; i++) {
-    // If a pulley is currently moving, stop it first
-    if (isMoving[i]) {
-      stopServo(i);
-      isMoving[i] = false;
+void handleStop()
+{
+    if (!server.hasArg("p"))
+    {
+        server.send(400, "application/json", "{\"err\":1}");
+        return;
     }
-    
-    // Always move downward for durationDown[i] to guarantee bottoming out
-    Serial.printf("Resetting pulley %d: dir=DOWN, duration=%lu ms, pin=%d\n", 
-                  i, durationDown[i], servoPins[i]);
-    startServo(i, false); // false = DOWN/Reverse
-    delay(durationDown[i]);
-    stopServo(i);
-    currentStates[i] = 0; // Set to bottom (0)
-  }
-  
-  Serial.println("Reset all 12 complete.");
-  handleStatus();
+    int p = server.arg("p").toInt();
+
+    // If p is -1, trigger EMERGENCY STOP ALL
+    if (p == -1)
+    {
+        Serial.println("EMERGENCY STOP: Stopping all 12 pulleys immediately!");
+        for (int i = 0; i < NUM_PULLEYS; i++)
+        {
+            if (isMoving[i])
+            {
+                stopServo(i);
+                isMoving[i] = false;
+                // Keep current state as is (it remains whatever it was: moving states resolved to last state or stopped)
+                currentStates[i] = (currentStates[i] == 2) ? 1 : 0;
+            }
+        }
+        handleStatus();
+        return;
+    }
+
+    if (p < 0 || p >= NUM_PULLEYS)
+    {
+        server.send(400, "application/json", "{\"err\":2}");
+        return;
+    }
+
+    if (isMoving[p])
+    {
+        stopServo(p);
+        isMoving[p] = false;
+        currentStates[p] = (currentStates[p] == 2) ? 1 : 0;
+        Serial.printf("Pulley %d manually stopped.\n", p);
+    }
+
+    handleStatus();
+}
+
+void handleCal()
+{
+    if (!server.hasArg("p") || !server.hasArg("durUp") || !server.hasArg("durDown") ||
+        !server.hasArg("fwd") || !server.hasArg("rev") || !server.hasArg("stop"))
+    {
+        server.send(400, "application/json", "{\"err\":1}");
+        return;
+    }
+
+    int p = server.arg("p").toInt();
+    unsigned long durUpVal = server.arg("durUp").toInt();
+    unsigned long durDnVal = server.arg("durDown").toInt();
+    int fwdVal = server.arg("fwd").toInt();
+    int revVal = server.arg("rev").toInt();
+    int stopVal = server.arg("stop").toInt();
+
+    if (p < 0 || p >= NUM_PULLEYS)
+    {
+        server.send(400, "application/json", "{\"err\":2}");
+        return;
+    }
+
+    // Update RAM values
+    durationUp[p] = durUpVal;
+    durationDown[p] = durDnVal;
+    speedFwd[p] = fwdVal;
+    speedRev[p] = revVal;
+    speedStop[p] = stopVal;
+
+    // Save to Preferences (Flash)
+    saveSettings(p);
+
+    // Instantly apply stop pulse calibration to physical servo if not moving
+    if (!isMoving[p])
+    {
+        stopServo(p);
+    }
+
+    server.send(200, "application/json", "{\"ok\":1}");
+}
+
+void handleResetAll()
+{
+    Serial.println("Resetting all 12 pulleys to BOTTOM (DOWN) state...");
+
+    for (int i = 0; i < NUM_PULLEYS; i++)
+    {
+        // If a pulley is currently moving, stop it first
+        if (isMoving[i])
+        {
+            stopServo(i);
+            isMoving[i] = false;
+        }
+
+        // Always move downward for durationDown[i] to guarantee bottoming out
+        Serial.printf("Resetting pulley %d: dir=DOWN, duration=%lu ms, pin=%d\n",
+                      i, durationDown[i], servoPins[i]);
+        startServo(i, false); // false = DOWN/Reverse
+        delay(durationDown[i]);
+        stopServo(i);
+        currentStates[i] = 0; // Set to bottom (0)
+    }
+
+    Serial.println("Reset all 12 complete.");
+    handleStatus();
 }
 
 // Low-level servo operations: dynamic attach and detach to respect C3 channel limitations
-void stopServo(int s) {
-  // 1. Send STOP pulse first
-  if (servos[s].attached()) {
-    servos[s].writeMicroseconds(speedStop[s]);
-  } else {
-    // Temp attach to send the stop pulse, then detach
-    servos[s].attach(servoPins[s], 300, 3000);
-    servos[s].writeMicroseconds(speedStop[s]);
-  }
-  delay(15);
-  
-  // 2. Detach pin to free up the LEDC channel
-  servos[s].detach();
-  
-  // 3. Force control line low to prevent any pot creep / noise
-  pinMode(servoPins[s], OUTPUT);
-  digitalWrite(servoPins[s], LOW);
+void stopServo(int s)
+{
+    // 1. Send STOP pulse first
+    if (servos[s].attached())
+    {
+        servos[s].writeMicroseconds(speedStop[s]);
+    }
+    else
+    {
+        // Temp attach to send the stop pulse, then detach
+        servos[s].attach(servoPins[s], 300, 3000);
+        servos[s].writeMicroseconds(speedStop[s]);
+    }
+    delay(80);
+
+    // 2. Detach pin to free up the LEDC channel
+    servos[s].detach();
+
+    // 3. Force control line low to prevent any pot creep / noise
+    pinMode(servoPins[s], OUTPUT);
+    digitalWrite(servoPins[s], LOW);
 }
 
-void startServo(int s, bool forward) {
-  int us = forward ? speedFwd[s] : speedRev[s];
-  
-  // 1. Configure pin as output and drag low
-  pinMode(servoPins[s], OUTPUT);
-  digitalWrite(servoPins[s], LOW);
-  
-  // 2. Dynamically attach using extended ranges
-  servos[s].attach(servoPins[s], 300, 3000);
-  
-  // 3. Write active travel speed
-  servos[s].writeMicroseconds(us);
+void startServo(int s, bool forward)
+{
+    int us = forward ? speedFwd[s] : speedRev[s];
+
+    // 1. Configure pin as output and drag low
+    pinMode(servoPins[s], OUTPUT);
+    digitalWrite(servoPins[s], LOW);
+
+    // 2. Dynamically attach using extended ranges
+    servos[s].attach(servoPins[s], 300, 3000);
+
+    // 3. Write active travel speed
+    servos[s].writeMicroseconds(us);
 }
