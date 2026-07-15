@@ -1,12 +1,12 @@
 # 12-Pulley Network Controller 🚡
 
-Isang advanced na ESP32-C3 based controller para sa **12 independent cable car pulleys** (na nahahati sa Green, Yellow, at Red groups para sa Q1, Q2, Q3, at Q4). Nagho-host ito ng local Wi-Fi Access Point at nagpapatakbo ng HTTP server na may interactive at premium na Web Dispatch Portal para sa manual UP/DOWN control at live persistent calibration.
+An advanced ESP32-C3 based controller for **12 independent cable car pulleys** (divided into Green, Yellow, and Red groups for Q1, Q2, Q3, and Q4). The controller hosts a local Wi-Fi Access Point and runs an HTTP server with an interactive, premium Web Dispatch Portal for manual UP/DOWN control and live persistent calibration.
 
 ---
 
 ## 🏗️ Hardware Architecture & Pin Assignments
 
-Upang mapagana ang 12 independent pulleys gamit ang ESP32-C3, ang mga servos ay nakakonekta sa mga sumusunod na GPIO pins:
+To operate the 12 independent pulleys using the ESP32-C3, the servos are connected to the following GPIO pins:
 
 ### Wiring Connection Table
 
@@ -30,19 +30,19 @@ Upang mapagana ang 12 independent pulleys gamit ang ESP32-C3, ang mga servos ay 
 
 ## ⚡ Dynamic Attach/Detach (LEDC Channel Optimization)
 
-Ang ESP32-C3 ay may hardware limit na **6 LEDC PWM channels** lamang. Upang patakbuhin ang 12 servo motors nang sabay-sabay at ligtas:
-1. **Dynamic Attach**: Kapag pinindot ang **UP** o **DOWN** button para sa isang pulley, doon pa lamang ito ia-attach sa software (`servos[p].attach()`) upang kumuha ng LEDC channel.
-2. **Signal Teardown & Detach**: Matapos ang travel duration (o kapag pinindot ang **STOP**), ang servo ay sumusulat ng stop pulse, tinatanggal sa GPIO (`servos[p].detach()`), at ang pin ay hinahila sa **LOW (0V)**.
-3. **Mga Benepisyo**:
-   * Walang limitasyon sa bilang ng servos na kayang kontrolin.
-   * Ganap na tinatanggal ang signal drift o motor creep (hindi gigising ang motor kapag stationary).
-   * Mas mababa ang konsumo sa kuryente.
+The ESP32-C3 has a hardware limitation of only **6 LEDC PWM channels**. To run 12 servo motors safely and concurrently:
+1. **Dynamic Attach**: When the **UP** or **DOWN** button is clicked for a specific pulley, it dynamically attaches the servo in software (`servos[p].attach()`) to allocate an active LEDC channel on demand.
+2. **Signal Teardown & Detach**: After the travel duration completes (or when the **STOP** button is pressed), the servo writes a stop pulse, detaches from the GPIO (`servos[p].detach()`), and pulls the pin hard **LOW (0V)**.
+3. **Key Benefits**:
+   * No limit on the number of servos that can be controlled.
+   * Completely eliminates signal drift or motor creep (motor stays fully stationary when not moving).
+   * Significantly lower power consumption.
 
 ---
 
 ## 🚦 Default Timing Configuration
 
-Naka-embed sa controller ang mga sumusunod na default travel durations:
+The controller is embedded with the following default travel durations:
 
 | Pulley Index | Pulley Name | Default UP Duration | Default DOWN Duration | Custom Calibrations |
 | :---: | :--- | :---: | :---: | :--- |
@@ -60,14 +60,14 @@ Naka-embed sa controller ang mga sumusunod na default travel durations:
 
 ## 🌐 Web API Endpoints
 
-Kumonekta sa Wi-Fi AP ng board:
+Connect to the board's Wi-Fi Access Point:
 * **SSID**: `CableCar_12_Pulleys`
 * **Password**: `12345678`
 * **Access Portal**: `http://192.168.4.1`
 
 ### 1. Serves Controller Interface
 * **Endpoint**: `GET /`
-* **Response**: Responsive Glassmorphism dashboard na may control panels at calibration system.
+* **Response**: Responsive Glassmorphism dashboard with control panels and the calibration system.
 
 ### 2. Live Status
 * **Endpoint**: `GET /api/status`
@@ -86,25 +86,25 @@ Kumonekta sa Wi-Fi AP ng board:
 
 ### 3. Move Pulley
 * **Endpoint**: `GET /api/move?p=<0..11>&dir=<up|down>`
-* **Behavior**: Pinapatakbo ang pulley `p` sa tinukoy na direksyon batay sa naka-save na duration at speed.
+* **Behavior**: Runs pulley `p` in the specified direction based on saved duration and speed parameters.
 
 ### 4. Stop Pulley / Emergency Stop
 * **Endpoint**: `GET /api/stop?p=<index | -1>`
-* **Behavior**: Patigilin ang isang pulley. Kapag `p=-1`, ito ay mag-ti-trigger ng **Emergency Stop All** (sabay na hihinto ang lahat ng 12 motors).
+* **Behavior**: Stops a specific pulley. If `p=-1`, it triggers the **Emergency Stop All** sequence (halting all 12 motors concurrently).
 
 ### 5. Persistent Calibration Config
 * **Endpoint**: `GET /api/cal?p=<0..11>&durUp=<ms>&durDown=<ms>&fwd=<us>&rev=<us>&stop=<us>`
-* **Behavior**: Sinesave ang bagong configurations ng pulley `p` sa Preferences (Flash). Mananatili itong naka-save kahit patayin o i-reboot ang ESP32.
+* **Behavior**: Saves the new configurations of pulley `p` to Preferences (Flash). These configurations persist across board restarts and power cycles.
 
 ### 6. Reset All Pulleys
 * **Endpoint**: `GET /api/resetall`
-* **Behavior**: Ibababa ang lahat ng pulleys patungong BOTTOM state sequentially para sa kaligtasan ng mechanical assembly.
+* **Behavior**: Automatically moves all pulleys to the BOTTOM state sequentially for mechanical assembly safety.
 
 ---
 
 ## 🚀 Setup & Upload Instructions
 
-1. Buksan ang folder na ito sa **VS Code** na may **PlatformIO extension**.
-2. Ikonekta ang ESP32-C3 sa inyong computer gamit ang USB.
-3. I-click ang **Upload** (o `Ctrl+Alt+U`) para i-flash ang firmware.
-4. I-reboot ang device at kumonekta sa SSID ng portal.
+1. Open this folder in **VS Code** equipped with the **PlatformIO extension**.
+2. Connect the ESP32-C3 to your computer via USB.
+3. Click **Upload** (or use the shortcut `Ctrl+Alt+U`) to flash the firmware.
+4. Reboot the device and connect to the portal's SSID.
